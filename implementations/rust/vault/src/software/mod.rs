@@ -43,17 +43,11 @@ impl Default for DefaultVault {
 impl DefaultVault {
     fn get_entry(
         &self,
-        context: SecretKeyContext,
+        context: DefaultVaultSecret,
         error: VaultFailErrorKind,
     ) -> Result<&VaultEntry, VaultFailError> {
-        let id;
-        if let SecretKeyContext::Memory(i) = context {
-            id = i;
-        } else {
-            fail!(error);
-        }
         let entry;
-        if let Some(e) = self.entries.get(&id) {
+        if let Some(e) = self.entries.get(&context.0) {
             entry = e;
         } else {
             fail!(error);
@@ -63,11 +57,11 @@ impl DefaultVault {
 
     fn hkdf_sha256_internal(
         &mut self,
-        salt: SecretKeyContext,
+        salt: DefaultVaultSecret,
         info: &[u8],
         ikm: &[u8],
         output_attributes: Vec<SecretKeyAttributes>,
-    ) -> Result<Vec<SecretKeyContext>, VaultFailError> {
+    ) -> Result<Vec<DefaultVaultSecret>, VaultFailError> {
         let salt = self.get_entry(salt, VaultFailErrorKind::Ecdh)?;
 
         // FIXME: Doesn't work for secrets with size more than 32 bytes
@@ -86,7 +80,7 @@ impl DefaultVault {
             )),
         }?;
 
-        let mut secrets = Vec::<SecretKeyContext>::new();
+        let mut secrets = Vec::<DefaultVaultSecret>::new();
         let mut index = 0;
 
         for attributes in output_attributes {
@@ -169,7 +163,13 @@ macro_rules! encrypt_impl {
     }};
 }
 
+/// Vault secret
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct DefaultVaultSecret(usize);
+
 impl Vault for DefaultVault {
+    type Secret = DefaultVaultSecret;
+
     fn random(&mut self, data: &mut [u8]) -> Result<(), VaultFailError> {
         let mut rng = OsRng {};
         rng.fill_bytes(data);
@@ -184,7 +184,7 @@ impl Vault for DefaultVault {
     fn secret_generate(
         &mut self,
         attributes: SecretKeyAttributes,
-    ) -> Result<SecretKeyContext, VaultFailError> {
+    ) -> Result<Self::Secret, VaultFailError> {
         let mut rng = OsRng {};
         let key = match attributes.xtype {
             SecretKeyType::Curve25519 => {
@@ -222,14 +222,14 @@ impl Vault for DefaultVault {
                 key,
             },
         );
-        Ok(SecretKeyContext::Memory(self.next_id))
+        Ok(DefaultVaultSecret(self.next_id))
     }
 
     fn secret_import(
         &mut self,
         secret: &SecretKey,
         attributes: SecretKeyAttributes,
-    ) -> Result<SecretKeyContext, VaultFailError> {
+    ) -> Result<Self::Secret, VaultFailError> {
         self.next_id += 1;
         self.entries.insert(
             self.next_id,
@@ -239,37 +239,29 @@ impl Vault for DefaultVault {
                 key: secret.clone(),
             },
         );
-        Ok(SecretKeyContext::Memory(self.next_id))
+        Ok(DefaultVaultSecret(self.next_id))
     }
 
-    fn secret_export(&mut self, context: SecretKeyContext) -> Result<SecretKey, VaultFailError> {
-        if let SecretKeyContext::Memory(id) = context {
-            self.entries
-                .get(&id)
-                .map(|i| i.key.clone())
-                .ok_or_else(|| VaultFailErrorKind::GetAttributes.into())
-        } else {
-            Err(VaultFailErrorKind::Export.into())
-        }
+    fn secret_export(&mut self, context: Self::Secret) -> Result<SecretKey, VaultFailError> {
+        self.entries
+            .get(&context.0)
+            .map(|i| i.key.clone())
+            .ok_or_else(|| VaultFailErrorKind::GetAttributes.into())
     }
 
     fn secret_attributes_get(
         &mut self,
-        context: SecretKeyContext,
+        context: Self::Secret,
     ) -> Result<SecretKeyAttributes, VaultFailError> {
-        if let SecretKeyContext::Memory(id) = context {
-            self.entries
-                .get(&id)
-                .map(|i| i.key_attributes)
-                .ok_or_else(|| VaultFailErrorKind::GetAttributes.into())
-        } else {
-            Err(VaultFailErrorKind::GetAttributes.into())
-        }
+        self.entries
+            .get(&context.0)
+            .map(|i| i.key_attributes)
+            .ok_or_else(|| VaultFailErrorKind::GetAttributes.into())
     }
 
     fn secret_public_key_get(
         &mut self,
-        context: SecretKeyContext,
+        context: Self::Secret,
     ) -> Result<PublicKey, VaultFailError> {
         let entry = self.get_entry(context, VaultFailErrorKind::PublicKey)?;
 
@@ -289,22 +281,18 @@ impl Vault for DefaultVault {
         }
     }
 
-    fn secret_destroy(&mut self, context: SecretKeyContext) -> Result<(), VaultFailError> {
-        if let SecretKeyContext::Memory(id) = context {
-            if let Some(mut k) = self.entries.remove(&id) {
-                k.key.zeroize();
-            }
-            Ok(())
-        } else {
-            Err(VaultFailErrorKind::InvalidParam(0).into())
+    fn secret_destroy(&mut self, context: Self::Secret) -> Result<(), VaultFailError> {
+        if let Some(mut k) = self.entries.remove(&context.0) {
+            k.key.zeroize();
         }
+        Ok(())
     }
 
     fn ec_diffie_hellman(
         &mut self,
-        context: SecretKeyContext,
+        context: Self::Secret,
         peer_public_key: PublicKey,
-    ) -> Result<SecretKeyContext, VaultFailError> {
+    ) -> Result<Self::Secret, VaultFailError> {
         let entry = self.get_entry(context, VaultFailErrorKind::Ecdh)?;
 
         let value = match (&entry.key, peer_public_key) {
@@ -349,12 +337,12 @@ impl Vault for DefaultVault {
 
     fn ec_diffie_hellman_hkdf_sha256(
         &mut self,
-        context: SecretKeyContext,
+        context: Self::Secret,
         peer_public_key: PublicKey,
-        salt: SecretKeyContext,
+        salt: Self::Secret,
         info: &[u8],
         output_attributes: Vec<SecretKeyAttributes>,
-    ) -> Result<Vec<SecretKeyContext>, VaultFailError> {
+    ) -> Result<Vec<Self::Secret>, VaultFailError> {
         let private_key_entry = self.get_entry(context, VaultFailErrorKind::Ecdh)?;
 
         let dh = match (&private_key_entry.key, peer_public_key) {
@@ -394,11 +382,11 @@ impl Vault for DefaultVault {
 
     fn hkdf_sha256(
         &mut self,
-        salt: SecretKeyContext,
+        salt: Self::Secret,
         info: &[u8],
-        ikm: Option<SecretKeyContext>,
+        ikm: Option<Self::Secret>,
         output_attributes: Vec<SecretKeyAttributes>,
-    ) -> Result<Vec<SecretKeyContext>, VaultFailError> {
+    ) -> Result<Vec<Self::Secret>, VaultFailError> {
         let ikm_slice = match ikm {
             Some(ikm) => {
                 let ikm = self.get_entry(ikm, VaultFailErrorKind::HkdfSha256)?;
@@ -418,7 +406,7 @@ impl Vault for DefaultVault {
 
     fn aead_aes_gcm_encrypt<B: AsRef<[u8]>, C: AsRef<[u8]>, D: AsRef<[u8]>>(
         &mut self,
-        context: SecretKeyContext,
+        context: Self::Secret,
         plaintext: B,
         nonce: C,
         aad: D,
@@ -436,7 +424,7 @@ impl Vault for DefaultVault {
 
     fn aead_aes_gcm_decrypt<B: AsRef<[u8]>, C: AsRef<[u8]>, D: AsRef<[u8]>>(
         &mut self,
-        context: SecretKeyContext,
+        context: Self::Secret,
         cipher_text: B,
         nonce: C,
         aad: D,
@@ -458,7 +446,7 @@ impl Vault for DefaultVault {
 
     fn sign<B: AsRef<[u8]>>(
         &mut self,
-        secret_key: SecretKeyContext,
+        secret_key: Self::Secret,
         data: B,
     ) -> Result<[u8; 64], VaultFailError> {
         let entry = self.get_entry(secret_key, VaultFailErrorKind::Ecdh)?;
