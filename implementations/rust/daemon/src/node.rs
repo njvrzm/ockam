@@ -56,7 +56,7 @@ impl<'a> Node<'a> {
             };
             let mut v = vault.lock().unwrap();
             let resp_key_ctx = v.secret_generate(attributes).unwrap();
-            let resp_key = v.secret_public_key_get(resp_key_ctx).unwrap();
+            let resp_key = v.secret_public_key_get(&resp_key_ctx).unwrap();
             resp_key_opt = Some(resp_key);
             resp_key_ctx_opt = Some(resp_key_ctx);
             println!("Responder public key: {}", resp_key_opt.unwrap());

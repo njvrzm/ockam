@@ -275,6 +275,7 @@ pub enum ockam_vault_secret_type_t {
     OCKAM_VAULT_SECRET_TYPE_AES256_KEY = 2,
     OCKAM_VAULT_SECRET_TYPE_CURVE25519_PRIVATEKEY = 3,
     OCKAM_VAULT_SECRET_TYPE_P256_PRIVATEKEY = 4,
+    OCKAM_VAULT_SECRET_TYPE_CHAIN_KEY = 5,
 }
 #[repr(u32)]
 #[doc = " @enum    ockam_vault_secret_persistence_t"]
@@ -290,6 +291,7 @@ pub enum ockam_vault_secret_persistence_t {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum ockam_vault_secret_purpose_t {
     OCKAM_VAULT_SECRET_PURPOSE_KEY_AGREEMENT = 0,
+    OCKAM_VAULT_SECRET_PURPOSE_EPILOGUE = 1,
 }
 #[doc = " @struct  ockam_vault_secret_attributes_t"]
 #[doc = " @brief   Attributes for a specific ockam vault secret."]
@@ -793,8 +795,7 @@ pub struct ockam_vault_dispatch_table_t {
 #[derive(Debug, Copy, Clone)]
 pub struct ockam_vault {
     pub dispatch: *mut ockam_vault_dispatch_table_t,
-    pub default_context: *mut ::core::ffi::c_void,
-    pub impl_context: *mut ::core::ffi::c_void,
+    pub context: *mut ::core::ffi::c_void,
 }
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
