@@ -55,6 +55,7 @@ pub mod router {
                         }
                         OckamCommand::Router(RouterCommand::ReceiveMessage(m)) => {
                             got = true;
+                            println!("Router(RouterCommand::ReceiveMessage");
                             self.route(m, Direction::Incoming);
                         }
                         OckamCommand::Router(RouterCommand::SendMessage(m)) => {
