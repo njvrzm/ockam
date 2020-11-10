@@ -140,6 +140,7 @@ impl<I: KeyExchanger, R: KeyExchanger, E: NewKeyExchanger<I, R>> ChannelManager<
                         self.handle_send(m)?;
                     }
                     OckamCommand::Channel(ChannelCommand::ReceiveMessage(m)) => {
+                        println!("channel receivedm message ChannelCommand::ReceiveMessage");
                         self.handle_recv(m)?;
                     }
                     _ => return Err(ChannelErrorKind::InvalidParam(0).into()),

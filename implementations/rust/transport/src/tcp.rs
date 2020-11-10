@@ -213,8 +213,10 @@ impl TcpTransport {
 
     pub fn receive_message(&mut self) -> Result<bool, String> {
         let mut buff = [0u8; 16348];
+        println!("calling stream.read");
         match self.stream.read(&mut buff) {
             Ok(len) => {
+                println!("did read");
                 match Message::decode(&buff[0..len]) {
                     Ok((mut m, _)) => {
                         println!("--------Receive-------");
