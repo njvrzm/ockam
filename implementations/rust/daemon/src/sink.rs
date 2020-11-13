@@ -1,3 +1,5 @@
+use std::io::Write;
+use std::net::TcpStream;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 
 use crate::config::{AddonKind, Config};
@@ -8,7 +10,6 @@ use ockam_message::message::{
     RouterAddress,
 };
 use ockam_system::commands::{ChannelCommand, OckamCommand, RouterCommand, WorkerCommand};
-use std::io::Write;
 
 type WorkFn = fn(self_worker: &SinkWorker, msg: OckamMessage);
 
@@ -55,6 +56,14 @@ impl SinkWorker {
                             }
                         }
                         Err(e) => println!("failed to send to influxdb: {}", e),
+                    }
+                }
+                Some(AddonKind::QuestDb(addr)) => {
+                    // TODO: re-use a tcp connection (not one per write)
+                    let mut conn = TcpStream::connect(addr)
+                        .expect("connection to questdb could not be established");
+                    if let Err(e) = conn.write(msg.message_body.as_ref()) {
+                        println!("questdb write error: {}", e);
                     }
                 }
                 None => {

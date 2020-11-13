@@ -20,6 +20,7 @@ pub enum Input {
 #[derive(Debug, Clone)]
 pub enum AddonKind {
     InfluxDb(url::Url, String),
+    QuestDb(SocketAddr),
 }
 
 #[derive(Debug, Clone)]
@@ -119,6 +120,7 @@ impl From<cli::Args> for Config {
             addon: if let Some(a) = args.addon() {
                 match a {
                     cli::Addon::InfluxDb(u, db) => Some(AddonKind::InfluxDb(u, db)),
+                    cli::Addon::QuestDb(addr) => Some(AddonKind::QuestDb(addr)),
                 }
             } else {
                 None

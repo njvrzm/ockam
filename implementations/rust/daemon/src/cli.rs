@@ -223,6 +223,7 @@ impl Args {
 #[derive(Debug, Clone)]
 pub enum Addon {
     InfluxDb(Url, String),
+    QuestDb(SocketAddr),
 }
 
 impl FromStr for Addon {
@@ -241,6 +242,12 @@ impl FromStr for Addon {
                     Err("expected valid URL".into())
                 }
             }
+            ["questdb", addr @ ..] => Ok(Addon::QuestDb(
+                addr.get(0)
+                    .expect("bad configuration: questdb addon needs ip:port")
+                    .parse()
+                    .expect("can't parse questdb addon ip:port"),
+            )),
             _ => Err(format!("unknown configuration: {}", s)),
         }
     }
