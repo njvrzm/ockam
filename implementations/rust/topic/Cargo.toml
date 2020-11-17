@@ -1,0 +1,10 @@
+[package]
+name = "ockam-topic"
+version = "0.1.0"
+authors = ["Ockam Developers"]
+edition = "2018"
+
+[features]
+default = []
+
+[dependencies]
