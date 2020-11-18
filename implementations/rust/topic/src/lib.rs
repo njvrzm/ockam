@@ -1,24 +1,24 @@
 pub mod topic {
     use std::collections::HashMap;
 
+    struct TopicMessage<'a> {
+        body: &'a[u8]
+    }
+
     trait Subscription {
-        fn has_messages(&self) -> bool {
-            false
-        }
-        
-        fn on_message(&mut self, message_handler: Box<dyn Fn() -> ()>);
+        fn on_message(&mut self, message_handler: Box<dyn Fn(&TopicMessage) -> ()>);
 
         fn poll(&mut self);
     }
 
     struct MemSubscription {
-        message_handler: Box<dyn Fn() -> ()>
+        message_handler: Box<dyn Fn(&TopicMessage) -> ()>
     }
 
     impl MemSubscription {
         fn new() -> MemSubscription {
             MemSubscription {
-                message_handler: Box::new(|| {
+                message_handler: Box::new(|_message| {
                     unimplemented!()
                 })
             }
@@ -26,12 +26,17 @@ pub mod topic {
     }
 
     impl Subscription for MemSubscription {
-        fn on_message(&mut self, message_handler: Box<dyn Fn() -> ()>) {
+        fn on_message(&mut self, message_handler: Box<dyn Fn(&TopicMessage) -> ()>) {
             self.message_handler = message_handler
         }
 
         fn poll(&mut self) {
-            (self.message_handler)()
+            let body = [1, 2, 3];
+
+            let message = TopicMessage {
+                body: &(body)
+            };
+            (self.message_handler)(&message);
         }
     }
 
@@ -85,10 +90,9 @@ pub mod topic {
         let topic = topic_manager.get_topic("dummy");
 
         let mut subscription = topic.subscribe();
-        assert_eq!(false, subscription.has_messages());
 
-        subscription.on_message(Box::new(|| {
-            println!("Called")
+        subscription.on_message(Box::new(|_message| {
+            println!("Message contains {} bytes", _message.body.len())
         }));
 
         subscription.poll();
