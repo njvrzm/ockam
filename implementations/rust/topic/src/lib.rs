@@ -6,13 +6,13 @@ pub mod topic {
     }
 
     trait Subscription {
-        fn on_message(&mut self, message_handler: Box<dyn Fn(&TopicMessage) -> ()>);
+        fn on_message(&mut self, message_handler: Box<dyn Fn(TopicMessage) -> ()>);
 
         fn poll(&mut self);
     }
 
     struct MemSubscription {
-        message_handler: Box<dyn Fn(&TopicMessage) -> ()>
+        message_handler: Box<dyn Fn(TopicMessage) -> ()>
     }
 
     impl MemSubscription {
@@ -26,7 +26,7 @@ pub mod topic {
     }
 
     impl Subscription for MemSubscription {
-        fn on_message(&mut self, message_handler: Box<dyn Fn(&TopicMessage) -> ()>) {
+        fn on_message(&mut self, message_handler: Box<dyn Fn(TopicMessage) -> ()>) {
             self.message_handler = message_handler
         }
 
@@ -36,7 +36,7 @@ pub mod topic {
             let message = TopicMessage {
                 body: &(body)
             };
-            (self.message_handler)(&message);
+            (self.message_handler)(message);
         }
     }
 
