@@ -28,7 +28,8 @@ pub mod topic {
 
     struct MemSubscription {
         message_handler: Box<dyn Fn(&TopicMessage) -> ()>,
-        topic: Rc<Box<dyn Topic>>
+        topic: Rc<Box<dyn Topic>>,
+        id: usize
     }
 
     impl MemSubscription {
@@ -41,6 +42,8 @@ pub mod topic {
         fn handler(&self) -> &Box<dyn Fn(&TopicMessage) -> ()>;
 
         fn topic(&self) -> Rc<Box<dyn Topic>>;
+
+        fn id(&self) -> usize;
     }
 
     impl Subscription for MemSubscription {
@@ -55,6 +58,10 @@ pub mod topic {
         fn topic(&self) -> Rc<Box<dyn Topic>> {
             self.topic.clone()
         }
+
+        fn id(&self) -> usize {
+            self.id
+        }
     }
 
     trait TopicManager {
@@ -64,19 +71,23 @@ pub mod topic {
 
         fn publish(&mut self, topic_name: &str, message: TopicMessage);
 
-        fn subscribe(&mut self, name: &str, message_handler: Box<dyn Fn(&TopicMessage) -> ()>) -> Option<usize>;
+        fn subscribe(&mut self, name: &str, message_handler: Box<dyn Fn(&TopicMessage) -> ()>) -> Option<Rc<RefCell<dyn Subscription>>>;
+
+        fn unsubscribe(&mut self, handle: Rc<RefCell<dyn Subscription>>);
     }
 
     struct LocalTopicManager<'a> {
         topics: HashMap<&'a str, Rc<Box<dyn Topic>>>,
-        subscriptions: Vec<Rc<RefCell<dyn Subscription>>>
+        subscriptions: Vec<Rc<RefCell<dyn Subscription>>>,
+        subscription_id_counter: usize
     }
 
     impl LocalTopicManager<'_> {
         fn new<'a>() -> LocalTopicManager<'a>  {
             LocalTopicManager {
                 topics:  HashMap::new(),
-                subscriptions: Vec::new()
+                subscriptions: Vec::new(),
+                subscription_id_counter: 0
             }
         }
     }
@@ -99,20 +110,26 @@ pub mod topic {
             }
         }
 
-        fn subscribe(&mut self, name: &str, message_handler: Box<dyn Fn(&TopicMessage) -> ()>) -> Option<usize> {
+        fn subscribe(&mut self, name: &str, message_handler: Box<dyn Fn(&TopicMessage) -> ()>) -> Option<Rc<RefCell<dyn Subscription>>> {
             let maybe_topic = self.get_topic(name);
 
             match maybe_topic {
                 Some(topic) => {
                     let subscription: Rc<RefCell<dyn Subscription>> = Rc::new(RefCell::new(MemSubscription {
                         message_handler,
-                        topic: (*topic).clone()
+                        topic: (*topic).clone(),
+                        id: self.subscription_id_counter
                     }));
-                    self.subscriptions.push(subscription);
-                    Some(self.subscriptions.len() - 1)
+                    self.subscriptions.push(subscription.clone());
+                    self.subscription_id_counter += 1;
+                    Some(subscription.clone())
                 },
                 None => None
             }
+        }
+
+        fn unsubscribe(&mut self, handle: Rc<RefCell<dyn Subscription>>) {
+            self.subscriptions.retain(|s| s.borrow().id() != handle.borrow().id())
         }
     }
 
@@ -123,8 +140,12 @@ pub mod topic {
         topic_manager.create_topic("topic1");
         topic_manager.create_topic("topic2");
 
-        let _subscription_handle = topic_manager.subscribe("topic1", Box::new(|&_message| {
+        let subscription1 = topic_manager.subscribe("topic1", Box::new(|&_message| {
             println!("Handler 1: Message contains {} bytes", _message.body.len())
+        })).unwrap();
+
+        let subscription2 = topic_manager.subscribe("topic2", Box::new(|&_message| {
+            println!("Handler 2: Bytes {:?} ", _message.body)
         })).unwrap();
 
         let body = [1, 2, 3];
@@ -136,6 +157,8 @@ pub mod topic {
         topic_manager.publish("topic1", message);
         topic_manager.publish("topic2", message);
 
+        topic_manager.unsubscribe(subscription1);
+        topic_manager.unsubscribe(subscription2);
     }
 
 }
