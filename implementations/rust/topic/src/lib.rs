@@ -16,42 +16,39 @@ pub mod topic {
         name: &'a str
     }
 
-    impl MemTopic<'_>  {
-
-    }
-
     impl Topic for MemTopic<'_> {
         fn name(&self) -> &str {
             &self.name
         }
     }
 
+    type MessageHandler = Box<dyn Fn(&TopicMessage) -> ()>;
+    type TopicHandle = Rc<Box<dyn Topic>>;
+
     struct MemSubscription {
-        message_handler: Box<dyn Fn(&TopicMessage) -> ()>,
-        topic: Rc<Box<dyn Topic>>,
+        message_handler: MessageHandler,
+        topic: TopicHandle,
         id: usize
     }
 
-    impl MemSubscription {
-
-    }
-
     trait Subscription {
-        fn on_message(&mut self, message_handler: Box<dyn Fn(&TopicMessage) -> ()>);
+        fn on_message(&mut self, message_handler: MessageHandler);
 
-        fn handler(&self) -> &Box<dyn Fn(&TopicMessage) -> ()>;
+        fn handler(&self) -> &MessageHandler;
 
-        fn topic(&self) -> Rc<Box<dyn Topic>>;
+        fn topic(&self) -> TopicHandle;
 
         fn id(&self) -> usize;
     }
 
+    type SubscriptionHandle = Rc<RefCell<dyn Subscription>>;
+
     impl Subscription for MemSubscription {
-        fn on_message(&mut self, message_handler: Box<dyn Fn(&TopicMessage) -> ()>) {
+        fn on_message(&mut self, message_handler: MessageHandler) {
             self.message_handler = message_handler
         }
 
-        fn handler(&self) -> &Box<dyn Fn(&TopicMessage)> {
+        fn handler(&self) -> &MessageHandler {
             &self.message_handler
         }
 
@@ -64,21 +61,22 @@ pub mod topic {
         }
     }
 
+
     trait TopicManager {
         fn create_topic(&mut self, topic_name: &'static str);
 
-        fn get_topic(&self, topic_name: &str) -> Option<&Rc<Box<dyn Topic>>>;
+        fn get_topic(&self, topic_name: &str) -> Option<&TopicHandle>;
 
         fn publish(&mut self, topic_name: &str, message: TopicMessage);
 
-        fn subscribe(&mut self, name: &str, message_handler: Box<dyn Fn(&TopicMessage) -> ()>) -> Option<Rc<RefCell<dyn Subscription>>>;
+        fn subscribe(&mut self, name: &str, message_handler: MessageHandler) -> Option<SubscriptionHandle>;
 
-        fn unsubscribe(&mut self, handle: Rc<RefCell<dyn Subscription>>);
+        fn unsubscribe(&mut self, handle: SubscriptionHandle);
     }
 
     struct LocalTopicManager<'a> {
-        topics: HashMap<&'a str, Rc<Box<dyn Topic>>>,
-        subscriptions: Vec<Rc<RefCell<dyn Subscription>>>,
+        topics: HashMap<&'a str, TopicHandle>,
+        subscriptions: Vec<SubscriptionHandle>,
         subscription_id_counter: usize
     }
 
@@ -98,7 +96,7 @@ pub mod topic {
             self.topics.insert(topic_name, topic);
         }
 
-        fn get_topic(&self, topic_name: &str) -> Option<&Rc<Box<dyn Topic>>> {
+        fn get_topic(&self, topic_name: &str) -> Option<&TopicHandle> {
             self.topics.get(topic_name)
         }
 
@@ -110,12 +108,12 @@ pub mod topic {
             }
         }
 
-        fn subscribe(&mut self, name: &str, message_handler: Box<dyn Fn(&TopicMessage) -> ()>) -> Option<Rc<RefCell<dyn Subscription>>> {
+        fn subscribe(&mut self, name: &str, message_handler: MessageHandler) -> Option<SubscriptionHandle> {
             let maybe_topic = self.get_topic(name);
 
             match maybe_topic {
                 Some(topic) => {
-                    let subscription: Rc<RefCell<dyn Subscription>> = Rc::new(RefCell::new(MemSubscription {
+                    let subscription: SubscriptionHandle = Rc::new(RefCell::new(MemSubscription {
                         message_handler,
                         topic: (*topic).clone(),
                         id: self.subscription_id_counter
@@ -128,7 +126,7 @@ pub mod topic {
             }
         }
 
-        fn unsubscribe(&mut self, handle: Rc<RefCell<dyn Subscription>>) {
+        fn unsubscribe(&mut self, handle: SubscriptionHandle) {
             self.subscriptions.retain(|s| s.borrow().id() != handle.borrow().id())
         }
     }
