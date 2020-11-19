@@ -2,31 +2,45 @@ pub mod topic {
     use std::collections::HashMap;
     use std::rc::Rc;
     use std::cell::RefCell;
-    use std::borrow::Borrow;
 
     #[derive(Copy, Clone)]
     struct TopicMessage<'a> {
         body: &'a[u8]
     }
 
+    trait Topic {
+        fn name(&self) -> &str;
+    }
+
+    struct MemTopic<'a> {
+        name: &'a str
+    }
+
+    impl MemTopic<'_>  {
+
+    }
+
+    impl Topic for MemTopic<'_> {
+        fn name(&self) -> &str {
+            &self.name
+        }
+    }
+
+    struct MemSubscription {
+        message_handler: Box<dyn Fn(&TopicMessage) -> ()>,
+        topic: Rc<Box<dyn Topic>>
+    }
+
+    impl MemSubscription {
+
+    }
+
     trait Subscription {
         fn on_message(&mut self, message_handler: Box<dyn Fn(&TopicMessage) -> ()>);
 
         fn handler(&self) -> &Box<dyn Fn(&TopicMessage) -> ()>;
-    }
 
-    struct MemSubscription {
-        message_handler: Box<dyn Fn(&TopicMessage) -> ()>
-    }
-
-    impl MemSubscription {
-        fn new() -> MemSubscription {
-            MemSubscription {
-                message_handler: Box::new(|_message| {
-                    unimplemented!()
-                })
-            }
-        }
+        fn topic(&self) -> Rc<Box<dyn Topic>>;
     }
 
     impl Subscription for MemSubscription {
@@ -37,64 +51,67 @@ pub mod topic {
         fn handler(&self) -> &Box<dyn Fn(&TopicMessage)> {
             &self.message_handler
         }
-    }
 
-    trait Topic {
-    }
-
-    struct MemTopic {
-
-    }
-
-    impl MemTopic {
-
-    }
-
-    impl Topic for MemTopic {
-
+        fn topic(&self) -> Rc<Box<dyn Topic>> {
+            self.topic.clone()
+        }
     }
 
     trait TopicManager {
-        fn get_topic(&self, topic_name: &str) -> &Box<dyn Topic>;
+        fn create_topic(&mut self, topic_name: &'static str);
+
+        fn get_topic(&self, topic_name: &str) -> Option<&Rc<Box<dyn Topic>>>;
 
         fn publish(&mut self, topic_name: &str, message: TopicMessage);
+
+        fn subscribe(&mut self, name: &str, message_handler: Box<dyn Fn(&TopicMessage) -> ()>) -> Option<usize>;
     }
 
     struct LocalTopicManager<'a> {
-        topics: HashMap<&'a str, Box<dyn Topic>>,
+        topics: HashMap<&'a str, Rc<Box<dyn Topic>>>,
         subscriptions: Vec<Rc<RefCell<dyn Subscription>>>
     }
 
     impl LocalTopicManager<'_> {
         fn new<'a>() -> LocalTopicManager<'a>  {
-            let mut topics = HashMap::new();
-            let dummy : Box<dyn Topic> = Box::new(MemTopic {});
-
-            topics.insert("dummy", dummy);
             LocalTopicManager {
-                topics,
+                topics:  HashMap::new(),
                 subscriptions: Vec::new()
             }
-        }
-
-        fn subscribe(&mut self, name: &str, message_handler: Box<dyn Fn(&TopicMessage) -> ()>) -> usize {
-            let subscription: Rc<RefCell<dyn Subscription>> = Rc::new(RefCell::new(MemSubscription::new()));
-
-            subscription.borrow_mut().on_message(message_handler);
-
-            self.subscriptions.push(subscription);
-            self.subscriptions.len()
         }
     }
 
     impl TopicManager for LocalTopicManager<'_> {
-        fn get_topic(&self, topic_name: &str) -> &Box<dyn Topic> {
-            self.topics.get(topic_name).expect(format!("Topic not found {}", topic_name).as_str())
+        fn create_topic(&mut self, topic_name: &'static str) {
+            let topic : Rc<Box<dyn Topic>> = Rc::new(Box::new(MemTopic {name: topic_name}));
+            self.topics.insert(topic_name, topic);
         }
 
-        fn publish(&mut self, name: &str, message: TopicMessage) {
+        fn get_topic(&self, topic_name: &str) -> Option<&Rc<Box<dyn Topic>>> {
+            self.topics.get(topic_name)
+        }
+
+        fn publish(&mut self, topic_name: &str, message: TopicMessage) {
             for subscription in &self.subscriptions {
-                (*subscription.borrow_mut()).handler()(&message);
+                if (*subscription.borrow()).topic().name().eq(topic_name) {
+                    (*subscription.borrow_mut()).handler()(&message);
+                }
+            }
+        }
+
+        fn subscribe(&mut self, name: &str, message_handler: Box<dyn Fn(&TopicMessage) -> ()>) -> Option<usize> {
+            let maybe_topic = self.get_topic(name);
+
+            match maybe_topic {
+                Some(topic) => {
+                    let subscription: Rc<RefCell<dyn Subscription>> = Rc::new(RefCell::new(MemSubscription {
+                        message_handler,
+                        topic: (*topic).clone()
+                    }));
+                    self.subscriptions.push(subscription);
+                    Some(self.subscriptions.len() - 1)
+                },
+                None => None
             }
         }
     }
@@ -102,9 +119,13 @@ pub mod topic {
     #[test]
     fn topic_tdd() {
         let mut topic_manager = LocalTopicManager::new();
-        let _subscription_handle = topic_manager.subscribe("dummy", Box::new(|&_message| {
-            println!("Message contains {} bytes", _message.body.len())
-        }));
+
+        topic_manager.create_topic("topic1");
+        topic_manager.create_topic("topic2");
+
+        let _subscription_handle = topic_manager.subscribe("topic1", Box::new(|&_message| {
+            println!("Handler 1: Message contains {} bytes", _message.body.len())
+        })).unwrap();
 
         let body = [1, 2, 3];
 
@@ -112,7 +133,9 @@ pub mod topic {
             body: &(body)
         };
 
-        topic_manager.publish("dummy", message);
+        topic_manager.publish("topic1", message);
+        topic_manager.publish("topic2", message);
+
     }
 
 }
