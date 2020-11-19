@@ -1,18 +1,22 @@
 pub mod topic {
     use std::collections::HashMap;
+    use std::rc::Rc;
+    use std::cell::RefCell;
+    use std::borrow::Borrow;
 
+    #[derive(Copy, Clone)]
     struct TopicMessage<'a> {
         body: &'a[u8]
     }
 
     trait Subscription {
-        fn on_message(&mut self, message_handler: Box<dyn Fn(TopicMessage) -> ()>);
+        fn on_message(&mut self, message_handler: Box<dyn Fn(&TopicMessage) -> ()>);
 
-        fn poll(&mut self);
+        fn handler(&self) -> &Box<dyn Fn(&TopicMessage) -> ()>;
     }
 
     struct MemSubscription {
-        message_handler: Box<dyn Fn(TopicMessage) -> ()>
+        message_handler: Box<dyn Fn(&TopicMessage) -> ()>
     }
 
     impl MemSubscription {
@@ -26,22 +30,16 @@ pub mod topic {
     }
 
     impl Subscription for MemSubscription {
-        fn on_message(&mut self, message_handler: Box<dyn Fn(TopicMessage) -> ()>) {
+        fn on_message(&mut self, message_handler: Box<dyn Fn(&TopicMessage) -> ()>) {
             self.message_handler = message_handler
         }
 
-        fn poll(&mut self) {
-            let body = [1, 2, 3];
-
-            let message = TopicMessage {
-                body: &(body)
-            };
-            (self.message_handler)(message);
+        fn handler(&self) -> &Box<dyn Fn(&TopicMessage)> {
+            &self.message_handler
         }
     }
 
     trait Topic {
-        fn subscribe(&self) -> Box<dyn Subscription>;
     }
 
     struct MemTopic {
@@ -53,17 +51,18 @@ pub mod topic {
     }
 
     impl Topic for MemTopic {
-        fn subscribe(&self) -> Box<dyn Subscription> {
-            Box::new(MemSubscription::new())
-        }
+
     }
 
     trait TopicManager {
-        fn get_topic(&self, name: &str) -> &Box<dyn Topic>;
+        fn get_topic(&self, topic_name: &str) -> &Box<dyn Topic>;
+
+        fn publish(&mut self, topic_name: &str, message: TopicMessage);
     }
 
     struct LocalTopicManager<'a> {
-        topics: HashMap<&'a str, Box<dyn Topic>>
+        topics: HashMap<&'a str, Box<dyn Topic>>,
+        subscriptions: Vec<Rc<RefCell<dyn Subscription>>>
     }
 
     impl LocalTopicManager<'_> {
@@ -73,29 +72,47 @@ pub mod topic {
 
             topics.insert("dummy", dummy);
             LocalTopicManager {
-                topics
+                topics,
+                subscriptions: Vec::new()
             }
+        }
+
+        fn subscribe(&mut self, name: &str, message_handler: Box<dyn Fn(&TopicMessage) -> ()>) -> usize {
+            let subscription: Rc<RefCell<dyn Subscription>> = Rc::new(RefCell::new(MemSubscription::new()));
+
+            subscription.borrow_mut().on_message(message_handler);
+
+            self.subscriptions.push(subscription);
+            self.subscriptions.len()
         }
     }
 
     impl TopicManager for LocalTopicManager<'_> {
-        fn get_topic(&self, name: &str) -> &Box<dyn Topic> {
-            self.topics.get(name).expect(format!("Topic not found {}", name).as_str())
+        fn get_topic(&self, topic_name: &str) -> &Box<dyn Topic> {
+            self.topics.get(topic_name).expect(format!("Topic not found {}", topic_name).as_str())
+        }
+
+        fn publish(&mut self, name: &str, message: TopicMessage) {
+            for subscription in &self.subscriptions {
+                (*subscription.borrow_mut()).handler()(&message);
+            }
         }
     }
 
     #[test]
     fn topic_tdd() {
-        let topic_manager = LocalTopicManager::new();
-        let topic = topic_manager.get_topic("dummy");
-
-        let mut subscription = topic.subscribe();
-
-        subscription.on_message(Box::new(|_message| {
+        let mut topic_manager = LocalTopicManager::new();
+        let _subscription_handle = topic_manager.subscribe("dummy", Box::new(|&_message| {
             println!("Message contains {} bytes", _message.body.len())
         }));
 
-        subscription.poll();
+        let body = [1, 2, 3];
+
+        let message = TopicMessage {
+            body: &(body)
+        };
+
+        topic_manager.publish("dummy", message);
     }
 
 }
