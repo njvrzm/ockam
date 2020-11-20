@@ -8,3 +8,4 @@ edition = "2018"
 default = []
 
 [dependencies]
+simple_redis = "0.5.2"
