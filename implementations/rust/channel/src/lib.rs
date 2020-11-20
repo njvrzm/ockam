@@ -46,7 +46,7 @@ use std::{
 
 /// A channel address of zero indicates to the channel manager that
 /// a new channel is being initiated
-pub static CHANNEL_ZERO: &str = "00000000";
+pub const CHANNEL_ZERO: &str = "00000000";
 
 enum ExchangerRole {
     Initiator,
@@ -319,6 +319,7 @@ impl<I: KeyExchanger, R: KeyExchanger, E: NewKeyExchanger<I, R>> ChannelManager<
     }
 
     fn handle_m1_recv(&self, channel: Arc<Mutex<Channel>>, m: Message) -> Result<(), ChannelError> {
+        println!("m1_recv");
         let channel = &mut *channel.lock().unwrap();
 
         // send cleartext channel address as payload
@@ -347,6 +348,7 @@ impl<I: KeyExchanger, R: KeyExchanger, E: NewKeyExchanger<I, R>> ChannelManager<
     }
 
     fn handle_m2_recv(&self, channel: Arc<Mutex<Channel>>, m: Message) -> Result<(), ChannelError> {
+        println!("m2_recv");
         let mut channel = &mut *channel.lock().unwrap();
         let return_route = m.return_route.clone();
         let channel_cleartext_addr_encoded = channel.agreement.process(&m.message_body)?;
@@ -389,6 +391,7 @@ impl<I: KeyExchanger, R: KeyExchanger, E: NewKeyExchanger<I, R>> ChannelManager<
     }
 
     fn handle_m3_recv(&self, channel: Arc<Mutex<Channel>>, m: Message) -> Result<(), ChannelError> {
+        println!("m3_recv");
         let mut channel = channel.lock().unwrap();
         let return_route = m.return_route.clone();
         // For now ignore anything returned from M3
