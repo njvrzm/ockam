@@ -37,6 +37,9 @@ pub enum Role {
 pub fn blast(blaster_tx: std::sync::mpsc::Sender<OckamCommand>) {
     thread::sleep(time::Duration::from_millis(100));
     for i in 0..200 {
+        if i == 199 {
+            println!("199");
+        }
         let f = rand::random::<f64>();
         let payload_size = (f * (MAX_MESSAGE_SIZE - 128) as f64) as usize;
         println!("{}: payload size: {}", i, payload_size);

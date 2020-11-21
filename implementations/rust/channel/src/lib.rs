@@ -156,11 +156,14 @@ impl<I: KeyExchanger, R: KeyExchanger, E: NewKeyExchanger<I, R>> ChannelManager<
         if m.onward_route.addresses.is_empty() {
             return Err(ChannelErrorKind::CantSend.into());
         }
-        let address = &m.onward_route.addresses[0];
-        return match self.channels.get_mut(&address.address.as_string()) {
+        let this_channel_address = &m.onward_route.addresses[0];
+        return match self
+            .channels
+            .get_mut(&this_channel_address.address.as_string())
+        {
             Some(channel) => {
                 let mut channel = channel.lock().unwrap();
-                if address.address == channel.as_cleartext_address() {
+                if this_channel_address.address == channel.as_cleartext_address() {
                     // messages coming in on the cleartext channel need to be encrypted,
                     // wrapped in an outer message, and sent on their way
 
@@ -319,7 +322,6 @@ impl<I: KeyExchanger, R: KeyExchanger, E: NewKeyExchanger<I, R>> ChannelManager<
     }
 
     fn handle_m1_recv(&self, channel: Arc<Mutex<Channel>>, m: Message) -> Result<(), ChannelError> {
-        println!("m1_recv");
         let channel = &mut *channel.lock().unwrap();
 
         // send cleartext channel address as payload
@@ -348,7 +350,6 @@ impl<I: KeyExchanger, R: KeyExchanger, E: NewKeyExchanger<I, R>> ChannelManager<
     }
 
     fn handle_m2_recv(&self, channel: Arc<Mutex<Channel>>, m: Message) -> Result<(), ChannelError> {
-        println!("m2_recv");
         let mut channel = &mut *channel.lock().unwrap();
         let return_route = m.return_route.clone();
         let channel_cleartext_addr_encoded = channel.agreement.process(&m.message_body)?;
@@ -391,7 +392,6 @@ impl<I: KeyExchanger, R: KeyExchanger, E: NewKeyExchanger<I, R>> ChannelManager<
     }
 
     fn handle_m3_recv(&self, channel: Arc<Mutex<Channel>>, m: Message) -> Result<(), ChannelError> {
-        println!("m3_recv");
         let mut channel = channel.lock().unwrap();
         let return_route = m.return_route.clone();
         // For now ignore anything returned from M3
@@ -399,9 +399,9 @@ impl<I: KeyExchanger, R: KeyExchanger, E: NewKeyExchanger<I, R>> ChannelManager<
         debug_assert!(channel.agreement.is_complete());
         if channel.completed_key_exchange.is_none() {
             // key agreement has finished, now can process any pending messages
-            let pending = channel.pending.clone();
             channel.completed_key_exchange = Some(channel.agreement.finalize()?);
             channel.route = return_route;
+            let pending = channel.pending.clone();
             match pending {
                 Some(mut p) => {
                     p.return_route = channel.route.clone();
@@ -543,8 +543,6 @@ impl std::fmt::Debug for Channel {
 }
 
 impl Channel {
-    //   pub fn new(cleartext_address: u32, ciphertext_address: u32, agreement: Box<dyn
-    // KeyExchanger>) -> Self {
     pub fn new(
         cleartext_address: u32,
         ciphertext_address: u32,
