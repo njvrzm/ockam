@@ -4,6 +4,7 @@ pub mod ockam_redis {
     use simple_redis::client::Client;
     use std::cell::RefCell;
     use std::rc::Rc;
+    use std::borrow::Borrow;
 
     struct RedisManager {
         client: Client,
@@ -24,21 +25,27 @@ pub mod ockam_redis {
             unimplemented!()
         }
 
-        fn subscribe(&mut self, name: String, message_handler: MessageHandler) -> Option<SubscriptionHandle> {
+        fn subscribe(&mut self, name: String) -> Option<SubscriptionHandle> {
             self.client.subscribe(name.as_str());
 
             self.subscription_counter += 1;
 
             let topic = MemTopic::new(name);
             Some(Rc::new(RefCell::new(TopicSubscription {
-                message_handler,
                 topic,
                 id: self.subscription_counter
-            })))
+            })))    
+        }
+
+        fn poll(&mut self, handle: SubscriptionHandle, message_handler: &dyn Fn(TopicMessage)) {
+            message_handler(TopicMessage {
+                body: &[0x41]
+            })
         }
 
         fn unsubscribe(&mut self, handle: SubscriptionHandle) {
-            unimplemented!()
+            let sub = (*handle).borrow();
+            self.client.unsubscribe(&(*sub).topic().name());
         }
     }
 
@@ -46,9 +53,13 @@ pub mod ockam_redis {
     fn redis_tdd() -> () {
         let mut manager = RedisManager::new("redis://127.0.0.1:6379/").unwrap();
 
-        manager.subscribe("test".to_string(), Box::new(|&message| {
+        let _sub = manager.subscribe("test".to_string()).unwrap();
 
-        }));
+        manager.poll(_sub.clone(), &|message| {
+            println!("Message: {:?}", message.body)
+        });
+
+        manager.unsubscribe(_sub.clone());
       /*  let mut client = simple_redis::create("redis://127.0.0.1:6379/").unwrap();
         let mut _result = client.subscribe("test");
 

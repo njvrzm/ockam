@@ -5,7 +5,7 @@ pub mod topic {
 
     #[derive(Copy, Clone)]
     pub struct TopicMessage<'a> {
-        body: &'a [u8],
+        pub body: &'a [u8],
     }
 
     pub trait Topic {
@@ -32,17 +32,12 @@ pub mod topic {
     pub type TopicHandle = Rc<Box<dyn Topic>>;
 
     pub struct TopicSubscription {
-        pub message_handler: MessageHandler,
         pub topic: TopicHandle,
         pub id: usize,
     }
 
 
     pub trait Subscription {
-        fn on_message(&mut self, message_handler: MessageHandler);
-
-        fn message_handler(&self) -> &MessageHandler;
-
         fn topic(&self) -> TopicHandle;
 
         fn id(&self) -> usize;
@@ -51,14 +46,6 @@ pub mod topic {
     pub(crate) type SubscriptionHandle = Rc<RefCell<dyn Subscription>>;
 
     impl Subscription for TopicSubscription {
-        fn on_message(&mut self, message_handler: MessageHandler) {
-            self.message_handler = message_handler
-        }
-
-        fn message_handler(&self) -> &MessageHandler {
-            &self.message_handler
-        }
-
         fn topic(&self) -> Rc<Box<dyn Topic>> {
             self.topic.clone()
         }
@@ -80,8 +67,9 @@ pub mod topic {
         fn subscribe(
             &mut self,
             name: String,
-            message_handler: MessageHandler,
         ) -> Option<SubscriptionHandle>;
+
+        fn poll(&mut self, handle: SubscriptionHandle, message_handler: &dyn Fn(TopicMessage) -> ());
 
         fn unsubscribe(&mut self, handle: SubscriptionHandle);
     }
@@ -117,7 +105,7 @@ pub mod topic {
         fn publish(&mut self, topic_name: String, message: TopicMessage) {
             for subscription in &self.subscriptions {
                 if (*subscription.borrow()).topic().name().eq(topic_name.clone().as_str()) {
-                    (*subscription.borrow_mut()).message_handler()(&message);
+                    // TODO put on internal Queue
                 }
             }
         }
@@ -125,14 +113,12 @@ pub mod topic {
         fn subscribe(
             &mut self,
             topic_name: String,
-            message_handler: MessageHandler,
         ) -> Option<SubscriptionHandle> {
             let maybe_topic = self.get_topic(topic_name);
 
             match maybe_topic {
                 Some(topic) => {
                     let subscription: SubscriptionHandle = Rc::new(RefCell::new(TopicSubscription {
-                        message_handler,
                         topic: (*topic).clone(),
                         id: self.subscription_id_counter,
                     }));
@@ -142,6 +128,10 @@ pub mod topic {
                 }
                 None => None,
             }
+        }
+
+        fn poll(&mut self, handle: SubscriptionHandle, func: &dyn Fn(TopicMessage) -> ()) {
+            unimplemented!()
         }
 
         fn unsubscribe(&mut self, handle: SubscriptionHandle) {
@@ -158,19 +148,11 @@ pub mod topic {
         topic_manager.create_topic("topic2".to_string());
 
         let subscription1 = topic_manager
-            .subscribe(
-                "topic1".to_string(),
-                Box::new(|&_message| {
-                    println!("Handler 1: Message contains {} bytes", _message.body.len())
-                }),
-            )
+            .subscribe("topic1".to_string())
             .unwrap();
 
         let subscription2 = topic_manager
-            .subscribe(
-                "topic2".to_string(),
-                Box::new(|&_message| println!("Handler 2: Bytes {:?} ", _message.body)),
-            )
+            .subscribe("topic2".to_string())
             .unwrap();
 
         let body = [1, 2, 3];
