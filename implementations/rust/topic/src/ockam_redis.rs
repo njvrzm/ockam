@@ -38,9 +38,19 @@ pub mod ockam_redis {
         }
 
         fn poll(&mut self, handle: SubscriptionHandle, message_handler: &dyn Fn(TopicMessage)) {
-            message_handler(TopicMessage {
-                body: &[0x41]
-            })
+            self.client.fetch_messages(&mut |message: Message| -> bool {
+                let topic = (*handle).borrow().topic();
+                let name = (*topic).name();
+                if name.as_str() == message.get_channel_name() {
+                    let payload: String = message.get_payload().unwrap();
+                    message_handler(TopicMessage {
+                        body: payload.as_bytes()
+                    });
+                }
+                true
+            }, &mut || -> Interrupts {
+                Interrupts::new()
+            });
         }
 
         fn unsubscribe(&mut self, handle: SubscriptionHandle) {
@@ -53,23 +63,16 @@ pub mod ockam_redis {
     fn redis_tdd() -> () {
         let mut manager = RedisManager::new("redis://127.0.0.1:6379/").unwrap();
 
-        let _sub = manager.subscribe("test".to_string()).unwrap();
+        let sub = manager.subscribe("test".to_string()).unwrap();
 
-        manager.poll(_sub.clone(), &|message| {
+        manager.poll(sub.clone(), &|message| {
             println!("Message: {:?}", message.body)
         });
 
-        manager.unsubscribe(_sub.clone());
+        manager.unsubscribe(sub.clone());
       /*  let mut client = simple_redis::create("redis://127.0.0.1:6379/").unwrap();
         let mut _result = client.subscribe("test");
 
-        client.fetch_messages(&mut |message: Message| -> bool {
-            let payload : String = message.get_payload().unwrap();
-            println!("{}: {}", message.get_channel_name(), payload);
-            false
-        }, &mut || -> Interrupts {
-            Interrupts::new()
-        });*/
-        println!("out")
+        */
     }
 }
